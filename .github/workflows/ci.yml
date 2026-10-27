@@ -1,0 +1,69 @@
+name: Validate radio
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: radio
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: radio/package-lock.json
+      - name: Install native build and audio tools
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg python3 make g++ pkg-config libopus-dev
+      - run: npm ci --no-audit --no-fund
+      - run: npm test
+  image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            ha_arch: amd64
+          - platform: linux/arm64
+            ha_arch: aarch64
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: docker/setup-qemu-action@v4
+        with:
+          platforms: arm64
+      - uses: docker/setup-buildx-action@v4
+      - name: Build locally, never publish
+        uses: docker/build-push-action@v7
+        env:
+          DOCKER_BUILD_RECORD_UPLOAD: 'false'
+        with:
+          context: ./radio
+          platforms: ${{ matrix.platform }}
+          push: false
+          load: true
+          tags: discord-radio:ci
+          build-args: |
+            BUILD_ARCH=${{ matrix.ha_arch }}
+            BUILD_VERSION=0.1.0
+      - name: Verify native audio dependencies without network or token
+        run: |
+          docker run --rm --network none --platform '${{ matrix.platform }}' \
+            --entrypoint node discord-radio:ci --input-type=module -e \
+            "import { OpusEncoder } from '@discordjs/opus'; import '@discordjs/voice'; import '@snazzah/davey'; new OpusEncoder(48000, 2); console.log('Native audio dependencies loaded');"
+          docker run --rm --network none --platform '${{ matrix.platform }}' \
+            --entrypoint ffmpeg discord-radio:ci -version
