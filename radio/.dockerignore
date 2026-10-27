@@ -20,3 +20,7 @@ media
 *.part
 *.log
 coverage
+
+playwright-report
+test-results
+test-ui
