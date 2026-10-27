@@ -30,3 +30,6 @@ cache-index.json
 **/media/
 *.pem
 *.key
+
+radio/playwright-report/
+radio/test-results/
