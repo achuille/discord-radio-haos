@@ -9,7 +9,8 @@
   let sourceSignature = '';
   let trackSignature = '';
   let pendingRemoval = null;
-  const labels = { connected: 'Connecté à Discord', ready: 'Connecté à Discord', connecting: 'Connexion à Discord…', reconnecting: 'Reconnexion à Discord…', disconnected: 'Discord déconnecté', error: 'Connexion en erreur', setup_required: 'Configuration requise', unconfigured: 'Configuration requise', idle: 'En attente' };
+  const labels = { connected: 'Connecté à Discord', ready: 'Connecté à Discord', connecting: 'Connexion à Discord…', reconnecting: 'Reconnexion à Discord…', disconnected: 'Discord déconnecté', error: 'Connexion en erreur', setup_required: 'Configuration requise', unconfigured: 'Configuration requise', idle: 'En attente', auth_required: 'Compte à vérifier', permission_denied: 'Accès au salon refusé', invalid_voice_channel: 'Salon vocal introuvable', invalid_channel_config: 'Identifiants à vérifier', retry_exhausted: 'Reconnexion différée', closed: 'Connexion arrêtée' };
+  const connectionHelp = { auth_required: 'Vérifiez le token du compte dédié dans les options Home Assistant. Si Discord demande une vérification, effectuez-la vous-même dans Discord, puis redémarrez l’application.', permission_denied: 'Le compte dédié doit avoir accès au serveur et les permissions Voir le salon, Se connecter et Parler dans ce vocal.', invalid_voice_channel: 'Vérifiez les identifiants du serveur et du salon : cette radio utilise un salon vocal ordinaire, pas une scène.', invalid_channel_config: 'Renseignez les identifiants numériques du serveur et du salon dans les options Home Assistant.', retry_exhausted: 'La connexion a échoué plusieurs fois. La radio attend avant une nouvelle tentative ; vérifiez votre accès à Internet.' };
   const sourceLabels = { ready: 'Disponible', synced: 'Disponible', syncing: 'Synchronisation…', loading: 'Chargement…', error: 'Erreur', pending: 'En attente', idle: 'En attente', empty: 'Aucun audio trouvé' };
   const playbackLabels = { playing: 'EN LECTURE', paused: 'EN PAUSE', idle: 'EN ATTENTE', stopped: 'À L’ARRÊT', buffering: 'CHARGEMENT', error: 'ERREUR' };
   function el(tag, className, text) {
@@ -32,7 +33,7 @@
   }
   function controls() {
     const canWrite = online && Boolean(status?.csrfToken) && !mutating;
-    const canPlay = canWrite && status?.configured !== false;
+    const canPlay = canWrite && status?.configured !== false && !['auth_required', 'permission_denied', 'invalid_voice_channel', 'invalid_channel_config'].includes(status?.connection?.state);
     $('toggle').disabled = !canPlay;
     $('skip').disabled = !canPlay || !(status?.tracks?.length);
     $('volume').disabled = !canPlay;
@@ -114,7 +115,7 @@
     const connection = status.connection || {};
     const playback = status.playback || {};
     const connected = ['connected', 'ready'].includes(connection.state);
-    $('connection').className = `badge${connected ? ' connected' : connection.state === 'error' ? ' error' : ''}`;
+    $('connection').className = `badge${connected ? ' connected' : (connection.state === 'error' || connectionHelp[connection.state]) ? ' error' : ''}`;
     $('connection').lastElementChild.textContent = labels[connection.state] || 'État de connexion inconnu';
     $('playback-state').textContent = playbackLabels[playback.state] || 'EN ATTENTE';
     document.querySelector('.player').classList.toggle('playing', playback.state === 'playing');
@@ -134,8 +135,9 @@
       $('volume').value = String(Math.min(100, Math.max(0, Number(playback.volume) * 100)));
       $('volume-value').textContent = `${$('volume').value}%`;
     }
-    $('notice').hidden = status.configured !== false && !connection.error && !playback.error;
-    $('notice').textContent = status.configured === false ? 'Pour démarrer, renseignez le jeton du bot Discord et le salon vocal dans les options du module complémentaire Home Assistant, puis redémarrez-le.' : String(connection.error || playback.error || '');
+    const guidance = connectionHelp[connection.state];
+    $('notice').hidden = status.configured !== false && !guidance && !connection.error && !playback.error;
+    $('notice').textContent = status.configured === false ? 'Pour démarrer, renseignez le token du compte Discord dédié, le serveur et le salon vocal dans les options du module complémentaire Home Assistant, puis redémarrez-le.' : String(guidance || connection.error || playback.error || '');
     renderSources(Array.isArray(status.sources) ? status.sources : []);
     renderTracks(); controls();
   }
