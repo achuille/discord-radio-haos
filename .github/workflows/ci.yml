@@ -28,6 +28,38 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y ffmpeg python3 make g++ pkg-config libopus-dev
       - run: npm ci --no-audit --no-fund
       - run: npm test
+  browser-ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: radio
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: radio/package-lock.json
+      - name: Install native build and audio tools
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg python3 make g++ pkg-config libopus-dev
+      - run: npm ci --no-audit --no-fund
+      - name: Install Chromium with official Playwright dependencies
+        run: npx --no-install playwright install --with-deps chromium
+      - name: Test real unconfigured app and isolated mock-only controls
+        run: npm run test:ui
+      - name: Upload nonconnected UI screenshots and test report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v5
+        with:
+          name: nonconnected-browser-ui
+          path: |
+            radio/test-results/
+            radio/playwright-report/
+          retention-days: 7
+          if-no-files-found: warn
   image:
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -64,6 +96,29 @@ jobs:
         run: |
           docker run --rm --network none --platform '${{ matrix.platform }}' \
             --entrypoint node discord-radio:ci --input-type=module -e \
-            "import { OpusEncoder } from '@discordjs/opus'; import '@discordjs/voice'; import '@snazzah/davey'; new OpusEncoder(48000, 2); console.log('Native audio dependencies loaded');"
+            "import opus from '@discordjs/opus'; const { OpusEncoder } = opus; import '@discordjs/voice'; import '@snazzah/davey'; new OpusEncoder(48000, 2); console.log('Native audio dependencies loaded');"
           docker run --rm --network none --platform '${{ matrix.platform }}' \
             --entrypoint ffmpeg discord-radio:ci -version
+      - name: Boot actual image without credentials or external network
+        shell: bash
+        run: |
+          container="radio-startup-${{ matrix.ha_arch }}"
+          trap 'docker logs "$container"; docker rm -f "$container" >/dev/null' EXIT
+          docker run --detach --name "$container" --network none \
+            --platform '${{ matrix.platform }}' --tmpfs /data:rw,noexec,nosuid,size=16m \
+            discord-radio:ci
+          docker exec "$container" node --input-type=module -e '
+            import { setTimeout } from "node:timers/promises";
+            let healthy = false;
+            for (let attempt = 0; attempt < 60; attempt++) {
+              try {
+                const response = await fetch("http://127.0.0.1:8080/health", { signal: AbortSignal.timeout(2000) });
+                if (response.status === 200 && (await response.json()).ok === true) { healthy = true; break; }
+              } catch {}
+              await setTimeout(1000);
+            }
+            if (!healthy) throw new Error("Actual image did not become healthy");
+            const response = await fetch("http://127.0.0.1:8080/api/status", { signal: AbortSignal.timeout(2000) });
+            if (response.status !== 403) throw new Error("Production ingress guard did not refuse loopback API");
+            console.log("Default image entrypoint healthy; production API guard verified (not a HAOS installation test)");
+          '
