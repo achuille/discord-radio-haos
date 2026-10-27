@@ -84,7 +84,7 @@ async function mockLibrary(page) {
     writes.push({ path: new URL(request.url()).pathname, method: request.method(), body: request.postDataJSON() });
     return route.fulfill({ json: { ok: true } });
   });
-  return { writes, polls: () => polls };
+  return { writes, state, polls: () => polls };
 }
 
 test('mock-only library: search, source controls, modal cancellation', async ({ page }, info) => {
@@ -133,5 +133,20 @@ test('mock-only polling preserves focused range input', async ({ page }) => {
   await expect(volume).toBeFocused();
   await expect(volume).toHaveValue('37');
   await expect(page.locator('#volume-value')).toHaveText('37%');
+  expect(mock.writes).toHaveLength(0);
+});
+
+test('mock-only account and permission failures give actionable guidance', async ({ page }) => {
+  const mock = await mockLibrary(page);
+  mock.state.connection.state = 'auth_required';
+  await page.goto('/');
+  await expect(page.locator('#connection')).toContainText('Compte à vérifier');
+  await expect(page.locator('#notice')).toContainText('Vérifiez le token du compte dédié');
+  await expect(page.locator('#toggle')).toBeDisabled();
+  await expect(page.locator('#add-source')).toBeEnabled();
+  mock.state.connection.state = 'permission_denied';
+  await page.reload();
+  await expect(page.locator('#connection')).toContainText('Accès au salon refusé');
+  await expect(page.locator('#notice')).toContainText('Voir le salon');
   expect(mock.writes).toHaveLength(0);
 });
