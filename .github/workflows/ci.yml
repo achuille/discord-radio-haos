@@ -24,13 +24,28 @@ jobs:
           node-version: '22'
           cache: npm
           cache-dependency-path: radio/package-lock.json
+      - name: Configure official Ubuntu mirror and bounded downloads
+        timeout-minutes: 1
+        run: |
+          # Keep Ubuntu suites, components and signing keys; replace only the stalled Azure mirror.
+          sudo find /etc/apt -maxdepth 2 -type f \
+            \( -name '*.list' -o -name '*.sources' \) \
+            -exec sed -i -E 's#https?://azure\.archive\.ubuntu\.com/ubuntu#https://archive.ubuntu.com/ubuntu#g' {} +
+          # Also applies to the apt subprocess used by Playwright --with-deps.
+          sudo tee /etc/apt/apt.conf.d/99radio-ci-network >/dev/null <<'APT'
+          Acquire::http::Timeout "30";
+          Acquire::https::Timeout "30";
+          Acquire::Retries "2";
+          Acquire::ForceIPv4 "true";
+          APT
       - name: Install native build and audio tools
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg python3 make g++ pkg-config libopus-dev
+        timeout-minutes: 6
+        run: sudo apt-get update --error-on=any && sudo apt-get install -y --no-install-recommends ffmpeg python3 make g++ pkg-config libopus-dev
       - run: npm ci --no-audit --no-fund
       - run: npm test
   browser-ui:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: radio
@@ -43,10 +58,26 @@ jobs:
           node-version: '22'
           cache: npm
           cache-dependency-path: radio/package-lock.json
+      - name: Configure official Ubuntu mirror and bounded downloads
+        timeout-minutes: 1
+        run: |
+          # Keep Ubuntu suites, components and signing keys; replace only the stalled Azure mirror.
+          sudo find /etc/apt -maxdepth 2 -type f \
+            \( -name '*.list' -o -name '*.sources' \) \
+            -exec sed -i -E 's#https?://azure\.archive\.ubuntu\.com/ubuntu#https://archive.ubuntu.com/ubuntu#g' {} +
+          # Also applies to the apt subprocess used by Playwright --with-deps.
+          sudo tee /etc/apt/apt.conf.d/99radio-ci-network >/dev/null <<'APT'
+          Acquire::http::Timeout "30";
+          Acquire::https::Timeout "30";
+          Acquire::Retries "2";
+          Acquire::ForceIPv4 "true";
+          APT
       - name: Install native build and audio tools
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg python3 make g++ pkg-config libopus-dev
+        timeout-minutes: 6
+        run: sudo apt-get update --error-on=any && sudo apt-get install -y --no-install-recommends ffmpeg python3 make g++ pkg-config libopus-dev
       - run: npm ci --no-audit --no-fund
       - name: Install Chromium with official Playwright dependencies
+        timeout-minutes: 6
         run: npx --no-install playwright install --with-deps chromium
       - name: Test real unconfigured app and isolated mock-only controls
         run: npm run test:ui
