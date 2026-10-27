@@ -2,7 +2,7 @@
 
 Une radio hébergée sur Home Assistant OS, avec une interface intégrée pour gérer plusieurs dossiers Google Drive publics ou URL audio directes. Les morceaux sont mis en cache sur HAOS : aucun PC ni navigateur à laisser allumé.
 
-> **Prototype expérimental.** La compatibilité complète, l'installation HAOS et la diffusion vocale réelle restent à valider. Le mode compte utilisateur automatisé (*selfbot*) contrevient aux règles Discord et expose le compte à une suspension, même s'il est dédié ou jetable. [Règle officielle](https://support.discord.com/hc/en-us/articles/115002192352-Automated-User-Accounts-Self-Bots).
+> **Version expérimentale.** Les tests automatisés et les builds sont vérifiés ; l’installation sur votre HAOS et la diffusion vocale réelle avec votre compte restent à valider. Le mode compte utilisateur automatisé (*selfbot*) contrevient aux règles Discord et expose le compte à une suspension, même s'il est dédié ou jetable. [Règle officielle](https://support.discord.com/hc/en-us/articles/115002192352-Automated-User-Accounts-Self-Bots).
 
 [Dépôt GitHub](https://github.com/achuille/discord-radio-haos) · [Résultats CI](https://github.com/achuille/discord-radio-haos/actions)
 
@@ -13,7 +13,7 @@ Une radio hébergée sur Home Assistant OS, avec une interface intégrée pour g
 3. Ouvrir l'interface dans Home Assistant et y ajouter les sources publiques.
 4. Activer **Démarrer au démarrage** et **Chien de garde**, puis vérifier la lecture dans Discord.
 
-[Guide détaillé, sécurité et dépannage →](radio/DOCS.md)
+[Guide détaillé, sécurité et dépannage →](radio/DOCS.md) · [Validation et limites](VALIDATION.md)
 
 ## Conception
 
@@ -34,12 +34,12 @@ La première installation compile l'image sur HAOS : elle nécessite Internet, d
 
 ### Avant une mise en service 24/7
 
-- Construire et tester l'image sur AMD64 et ARM64 ; vérifier FFmpeg, Opus et DAVE.
-- Valider une véritable source Drive publique, une URL audio directe et la gestion des liens invalides.
+- Consulter les résultats CI du code installé : builds AMD64/ARM64, démarrage, FFmpeg, Opus et DAVE.
+- Ajouter vos propres sources et vérifier leur import ; un dossier Drive public réel a été testé, pas tous les liens possibles.
 - Tester sur HAOS l'interface ingress, ses restrictions d'accès et la persistance de `/data`.
 - Tester une vraie lecture Discord, une perte réseau, un redémarrage HAOS et un fichier corrompu.
 - Mesurer CPU/RAM/température en lecture prolongée et vérifier l'absence de secrets dans les journaux.
 
 Sources : [schéma HA](https://contributors.home-assistant.io/apps/reference/configuration/), [ingress HA](https://contributors.home-assistant.io/apps/guides/ingress/), [bibliothèque voice](https://discord.js.org/docs/packages/voice/stable).
 
-La CI est configurée pour tester le code et construire AMD64/ARM64, sans publier d’image. Sa présence ne signifie pas qu’une exécution a déjà réussi ; consulter les résultats du commit utilisé.
+La CI teste le moteur, l’interface sur Chromium mobile/ordinateur et les images AMD64/ARM64, sans publier d’image. Les résultats datés et le commit testé sont détaillés dans [VALIDATION.md](VALIDATION.md).
