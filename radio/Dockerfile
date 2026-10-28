@@ -11,7 +11,7 @@ FROM node:22-bookworm-slim
 ARG BUILD_ARCH
 ARG BUILD_VERSION
 LABEL io.hass.name="Discord Radio" \
-      io.hass.description="Discord radio with a Home Assistant ingress panel" \
+      io.hass.description="Discord radio with native Home Assistant configuration" \
       io.hass.type="addon" \
       io.hass.version="${BUILD_VERSION}" \
       io.hass.arch="${BUILD_ARCH}"
@@ -23,7 +23,6 @@ RUN apt-get update \
 COPY --from=dependencies /app/node_modules ./node_modules
 COPY package.json package-lock.json ./
 COPY src ./src
-COPY public ./public
 COPY run.sh /run.sh
 RUN chmod 755 /run.sh
 # Supervisor supplies init and /data. No host port, device or API is required.
