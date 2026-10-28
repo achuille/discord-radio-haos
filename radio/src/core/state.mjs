@@ -24,9 +24,12 @@ export class RadioState {
   succeeded(track) { this.failures.delete(track); this.last = track; }
   prune(tracks) { const valid = new Set(tracks); for (const track of this.failures.keys()) if (!valid.has(track)) this.failures.delete(track); }
   async save() {
+    const data = JSON.stringify({ version: 1, last: this.last, failures: [...this.failures].map(([file, value]) => ({ path: file, ...value })) });
+    if (data === this.saved) return;
     await mkdir(path.dirname(this.file), { recursive: true });
     const temp = `${this.file}.${process.pid}.tmp`;
-    await writeFile(temp, JSON.stringify({ version: 1, last: this.last, failures: [...this.failures].map(([file, value]) => ({ path: file, ...value })) }), { mode: 0o600 });
+    await writeFile(temp, data, { mode: 0o600 });
     await rename(temp, this.file);
+    this.saved = data;
   }
 }
