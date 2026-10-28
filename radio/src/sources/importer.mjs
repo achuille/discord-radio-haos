@@ -3,7 +3,7 @@ import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { openPublic, publicURL } from './network.mjs';
+import { openPublic, publicURL, responseValidators } from './network.mjs';
 import { driveFolder, listDriveFiles } from './drive.mjs';
 const execute = promisify(execFile);
 const rootLocks = new Map();
@@ -34,7 +34,7 @@ export async function validateAudio(file, {signal} = {}) {
   if (!data.streams?.some(stream => stream.codec_type === 'audio') || !Number.isFinite(Number(data.format?.duration)) || Number(data.format.duration) <= 0) throw new Error('File has no finite playable audio');
   return {duration:Number(data.format.duration)};
 }
-async function cacheState(root, recursive = false) {
+async function cacheState(root, {recursive = false, measureBytes = true} = {}) {
   await mkdir(root,{recursive:true,mode:0o700});
   if ((await lstat(root)).isSymbolicLink()) throw new Error('Cache directory must not be a symlink');
   let bytes = 0; const tracks = [];
@@ -45,8 +45,8 @@ async function cacheState(root, recursive = false) {
     if (++count > 10000) throw new Error('Cache directory entry limit exceeded');
     if (entry.isDirectory() && recursive) { pending.push(path.join(directory,entry.name)); continue; }
     if (!entry.isFile()) { if (entry.isSymbolicLink()) throw new Error('Cache must not contain symlinks'); continue; }
-    const file = path.join(directory,entry.name), stat = await lstat(file);
-    bytes += stat.size;
+    const file = path.join(directory,entry.name);
+    if (measureBytes) bytes += (await lstat(file)).size;
     if (/^[a-f0-9]{64}\.mp3$/.test(entry.name)) tracks.push(file);
   }
   }
@@ -54,7 +54,8 @@ async function cacheState(root, recursive = false) {
 }
 export async function readCachedFiles(cacheDir) {
   const root = path.resolve(cacheDir);
-  const cache = await cacheState(root);
+  // Listing playable metadata does not need a stat call for every audio file.
+  const cache = await cacheState(root,{measureBytes:false});
   let metadata = {};
   try {
     const file = path.join(root,'.metadata.json');
@@ -83,7 +84,7 @@ export class SourceImporter {
   async perform(sources, {signal, refreshDirect = true} = {}) {
     const urls = normalizeSources(sources);
     if (urls.length > this.limits.maxSources) throw new Error('Source count limit exceeded');
-    const global = await cacheState(this.cacheRoot,true);
+    const global = await cacheState(this.cacheRoot,{recursive:true});
     const cache = await cacheState(this.cacheDir), report = {imported:0,cached:0,errors:[],sources:[],tracks:cache.tracks};
     const metadataPath = path.join(this.cacheDir,'.metadata.json');
     let metadata = {};
@@ -109,9 +110,20 @@ export class SourceImporter {
           if (existing && !changed) { source.cached++; report.cached++; continue; }
           try {
             if (!existing && global.tracks.length >= this.limits.maxFiles) throw new Error('Cache file count limit reached');
+            const validators = existing && !driveFolder(url) ? previous?.http : undefined;
             const budget = Math.min(this.limits.maxFileBytes,this.limits.maxCacheBytes-global.bytes-4096-Buffer.byteLength(JSON.stringify(metadata)));
-            if (budget <= 0 || (entry.size && entry.size > budget)) throw new Error('Audio cache byte limit reached');
-            const response = await this.open(entry.url,{signal,timeoutMs:120000});
+            const insufficientBudget = budget <= 0 || (entry.size && entry.size > budget);
+            // A conditional request can succeed without any disk writes. Known
+            // oversized unconditional downloads still stop before opening HTTP.
+            if (insufficientBudget && !validators) throw new Error('Audio cache byte limit reached');
+            const response = await this.open(entry.url,{signal,timeoutMs:120000,validators});
+            if (response.statusCode === 304) {
+              response.body.destroy?.();
+              if (!existing || !validators) throw new Error('Source returned HTTP 304');
+              source.cached++; report.cached++;
+              continue;
+            }
+            if (insufficientBudget) { response.body.destroy?.(); throw new Error('Audio cache byte limit reached'); }
             const length = Number(response.headers['content-length']);
             if (Number.isFinite(length) && length > budget) { response.body.destroy?.(); throw new Error('Audio exceeds byte limit'); }
             const contentType = (response.headers['content-type'] || '').toLowerCase();
@@ -132,7 +144,8 @@ export class SourceImporter {
               await rename(temporary,file);
               cache.bytes += bytes - previousBytes; global.bytes += bytes - previousBytes;
               if (!existing) { global.tracks.push(file); cache.tracks.push(file); }
-              metadata[key] = {id:hash(entry.url),title:(entry.name || path.basename(new URL(entry.url).pathname) || 'Audio').slice(0,300),duration:media?.duration ?? null,bytes,modifiedAt:entry.modifiedAt ?? null};
+              const http = !driveFolder(url) ? responseValidators(response.url ?? entry.url,response.headers) : undefined;
+              metadata[key] = {id:hash(entry.url),title:(entry.name || path.basename(new URL(entry.url).pathname) || 'Audio').slice(0,300),duration:media?.duration ?? null,bytes,modifiedAt:entry.modifiedAt ?? null,...(http && {http})};
               metadataChanged = true; source.imported++; report.imported++;
             } finally { response.body.destroy?.(); await handle?.close(); await unlink(temporary).catch(() => {}); }
           } catch (error) {

@@ -2,6 +2,20 @@ import https from 'node:https';
 import http from 'node:http';
 import dns from 'node:dns/promises';
 import { isIP } from 'node:net';
+import { createHash } from 'node:crypto';
+
+const urlHash = value => createHash('sha256').update(value).digest('hex');
+function safeValidators(value = {}) {
+  // Accept only bounded HTTP validators, never arbitrary caller-supplied headers.
+  const etag = typeof value.etag === 'string' && value.etag.length <= 1024 && /^(?:W\/)?"[\x21\x23-\x7e\x80-\xff]*"$/.test(value.etag) ? value.etag : undefined;
+  const lastModified = typeof value.lastModified === 'string' && value.lastModified.length <= 64 && Number.isFinite(Date.parse(value.lastModified)) && new Date(Date.parse(value.lastModified)).toUTCString() === value.lastModified ? value.lastModified : undefined;
+  return { ...(etag && {etag}), ...(lastModified && {lastModified}) };
+}
+export function responseValidators(url, headers = {}) {
+  const validators = safeValidators({etag:headers.etag,lastModified:headers['last-modified']});
+  if (!Object.keys(validators).length) return undefined;
+  return {urlHash:urlHash(publicURL(url).href),...validators};
+}
 
 // Fail closed for all IPv6 except global unicast; block IPv4 special-use ranges.
 export function isPublicAddress(address) {
@@ -29,7 +43,7 @@ export async function resolvePublic(url, lookup = dns.lookup) {
 }
 // DNS is checked and pinned to the socket at EACH redirect. No cookies, authorization,
 // user headers, ambient proxy credentials or remote referrers are forwarded.
-export async function openPublic(value, { signal, timeoutMs = 30000, maxRedirects = 5, lookup, request: requestTransport } = {}) {
+export async function openPublic(value, { signal, timeoutMs = 30000, maxRedirects = 5, lookup, request: requestTransport, validators } = {}) {
   let url = publicURL(value);
   const deadline = AbortSignal.timeout(timeoutMs);
   const combined = signal ? AbortSignal.any([signal,deadline]) : deadline;
@@ -41,10 +55,17 @@ export async function openPublic(value, { signal, timeoutMs = 30000, maxRedirect
     try { selected = await Promise.race([resolvePublic(url, lookup),aborted]); }
     finally { combined.removeEventListener('abort',onAbort); }
     combined.throwIfAborted();
+    // A redirect must not receive a different resource's validators, even on the
+    // same host. Persist a digest rather than any signed final URL in metadata.
+    const conditional = validators?.urlHash === urlHash(url.href) ? safeValidators(validators) : {};
+    const conditionalHeaders = {
+      ...(conditional.etag && {'if-none-match':conditional.etag}),
+      ...(conditional.lastModified && {'if-modified-since':conditional.lastModified}),
+    };
     const response = await new Promise((resolve,reject) => {
       const request = (requestTransport || ((...args) => (url.protocol === 'https:' ? https : http).get(...args)))(url, {
         signal:combined, agent:false,
-        headers:{'user-agent':'HAOS-Discord-Radio/1.0','accept-encoding':'identity'},
+        headers:{'user-agent':'HAOS-Discord-Radio/1.0','accept-encoding':'identity',...conditionalHeaders},
         lookup: (_host, options, callback) => options.all ? callback(null,[selected]) : callback(null, selected.address, selected.family),
       }, resolve);
       request.on('error', reject);
@@ -57,8 +78,8 @@ export async function openPublic(value, { signal, timeoutMs = 30000, maxRedirect
       url = next;
       continue;
     }
-    if (response.statusCode !== 200) { response.destroy(); throw new Error(`Source returned HTTP ${response.statusCode}`); }
-    return { body:response, headers:response.headers, url:url.href };
+    if (response.statusCode !== 200 && !(response.statusCode === 304 && Object.keys(conditionalHeaders).length)) { response.destroy(); throw new Error(`Source returned HTTP ${response.statusCode}`); }
+    return { body:response, headers:response.headers, url:url.href, statusCode:response.statusCode };
   }
   throw new Error('Too many redirects');
 }
