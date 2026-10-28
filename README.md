@@ -1,45 +1,36 @@
 # Discord Radio · Home Assistant OS
 
-Une radio hébergée sur Home Assistant OS, avec une interface intégrée pour gérer plusieurs dossiers Google Drive publics ou URL audio directes. Les morceaux sont mis en cache sur HAOS : aucun PC ni navigateur à laisser allumé.
+Radio Discord hébergée sur HAOS, gérée **uniquement dans l’onglet Configuration natif de l’application**. Plusieurs dossiers Google Drive publics ou URL audio directes, cache local et lecture aléatoire : aucun PC, navigateur ni interface web séparée à laisser ouvert. Aucune commande Discord n’est ajoutée.
 
-> **Version expérimentale.** Les tests automatisés et les builds sont vérifiés ; l’installation sur votre HAOS et la diffusion vocale réelle avec votre compte restent à valider. Le mode compte utilisateur automatisé (*selfbot*) contrevient aux règles Discord et expose le compte à une suspension, même s'il est dédié ou jetable. [Règle officielle](https://support.discord.com/hc/en-us/articles/115002192352-Automated-User-Accounts-Self-Bots).
+> **Version 0.2.0 expérimentale.** Les contrôles automatisés ne remplacent pas une installation HAOS ni une écoute Discord réelle. Le mode compte utilisateur automatisé (*selfbot*) contrevient aux règles Discord et expose le compte à une suspension, même s’il est dédié. [Règle officielle](https://support.discord.com/hc/en-us/articles/115002192352-Automated-User-Accounts-Self-Bots).
 
-[Dépôt GitHub](https://github.com/achuille/discord-radio-haos) · [Résultats CI](https://github.com/achuille/discord-radio-haos/actions)
+## Installation
 
-## Installation en bref
+1. Ajouter `https://github.com/achuille/discord-radio-haos` au magasin d’applications HA et installer **Discord Radio**.
+2. Dans **Configuration**, saisir le token (champ masqué), les identifiants du serveur et du salon vocal, puis les **sources** publiques. Si nécessaire, afficher les options facultatives.
+3. **Enregistrer puis redémarrer** l’application pour appliquer les changements. Consulter les **Journaux** pour l’import et la connexion.
+4. Activer **Démarrer au démarrage** et, si souhaité, le **Chien de garde** du Supervisor. Vérifier le son dans Discord.
 
-1. Ajouter `https://github.com/achuille/discord-radio-haos` au magasin d'applications HA et installer **Discord Radio**.
-2. Saisir le token **uniquement dans la configuration HA**, puis les identifiants du serveur et du salon vocal.
-3. Ouvrir l'interface dans Home Assistant et y ajouter les sources publiques.
-4. Activer **Démarrer au démarrage** et **Chien de garde**, puis vérifier la lecture dans Discord.
+Mise à jour depuis 0.1 : les anciennes sources et le volume effectif sont migrés vers la configuration native, avec conservation du cache. En cas d’échec, ils restent utilisés et la migration est retentée au prochain démarrage. Rafraîchir la page Configuration après la migration. [Détails et limites](radio/DOCS.md#mise-à-jour-depuis-01).
 
-[Guide détaillé, sécurité et dépannage →](radio/DOCS.md) · [Validation et limites](VALIDATION.md)
+[Guide détaillé](radio/DOCS.md) · [Validation](VALIDATION.md) · [Résultats CI](https://github.com/achuille/discord-radio-haos/actions)
 
-## Conception
+## Fonctionnement et ressources
 
-- Interface Home Assistant via ingress, sans port publié sur l'hôte.
-- Sources et cache audio conservés dans `/data`, jamais dans GitHub.
-- Un morceau et un processus FFmpeg à la fois ; Opus natif et prise en charge DAVE.
-- Aucun accès à l'API HA, au socket Docker, aux périphériques audio ou au réseau de l'hôte.
-- Démarrage automatique et reprises prévues pour un usage prolongé, sans garantie de diffusion ininterrompue.
-- Node.js 22, architectures HA `amd64` et `aarch64`. Les performances et la compatibilité ARM64 restent à vérifier sur matériel.
+- Aucun serveur HTTP, ingress, panneau web, port publié ou navigateur Playwright.
+- Un morceau et un FFmpeg à la fois ; la connexion vocale est prête **avant** le lancement du décodage. Opus natif et DAVE.
+- Les déplacements vers un salon vocal créé par le serveur sont suivis ; le salon de création n’est pas réimposé à chaque morceau. La cible est conservée pour la reprise ; changer les identifiants de Configuration réinitialise ce choix.
+- Synchronisations espacées ; les URL directes utilisent les validateurs HTTP lorsque disponibles pour éviter téléchargement et FFprobe inutiles.
+- État et cache privés dans `/data`. Pas de token Discord dans les journaux ni dans les fichiers d’état applicatifs.
+- Aucun accès à l’API Core HA, au socket Docker, aux périphériques audio ou au réseau de l’hôte. La migration utilise uniquement les options de **cette application** via l’accès Supervisor déjà accordé, sans activer `hassio_api`.
+- Node.js 22, architectures `amd64` et `aarch64`. Pas de promesse de diffusion ininterrompue ni de mesures de performance sur votre matériel.
 
-Ne diffusez que des contenus pour lesquels vous avez les droits nécessaires. La licence MIT couvre le code, pas les enregistrements audio. Aucun fichier musical, identifiant Drive personnel ou secret n'est inclus.
+Ne diffusez que des contenus dont vous détenez les droits. La licence MIT couvre le code, pas les enregistrements. Aucun fichier musical, lien Drive personnel ou secret n’est inclus.
 
 ## Développement
 
-Depuis `radio/` : `npm ci`, puis `npm test`. Utiliser une version de Node compatible avec `package.json`. Construire l'image depuis le même dossier : `docker build -t discord-radio:test .`. Conserver `package-lock.json` dans le dépôt.
+Depuis `radio/` : `npm ci`, puis `npm test`. L’image se construit avec `docker build -t discord-radio:test .`. La première installation compile sur HAOS ; elle nécessite Internet et du stockage libre. Aucun Node/Docker à installer sur l’hôte HAOS, aucune image précompilée annoncée.
 
-La première installation compile l'image sur HAOS : elle nécessite Internet, du stockage libre et une charge temporaire supérieure à la lecture. Aucune image précompilée n'est annoncée. La base officielle `node:22-bookworm-slim` reçoit les mises à jour de sa branche ; les dépendances npm sont verrouillées séparément. Sans S6, `init: true` laisse Supervisor fournir l'init.
+La CI teste le moteur, les migrations/configurations et les images AMD64/ARM64, sans publier d’image. Les tests navigateur ont été supprimés **avec** l’interface web. La CI vérifie un démarrage hors réseau sans token, l’absence de listener web et un arrêt propre ; ce n’est pas un test sur HAOS réel.
 
-### Avant une mise en service 24/7
-
-- Consulter les résultats CI du code installé : builds AMD64/ARM64, démarrage, FFmpeg, Opus et DAVE.
-- Ajouter vos propres sources et vérifier leur import ; un dossier Drive public réel a été testé, pas tous les liens possibles.
-- Tester sur HAOS l'interface ingress, ses restrictions d'accès et la persistance de `/data`.
-- Tester une vraie lecture Discord, une perte réseau, un redémarrage HAOS et un fichier corrompu.
-- Mesurer CPU/RAM/température en lecture prolongée et vérifier l'absence de secrets dans les journaux.
-
-Sources : [schéma HA](https://contributors.home-assistant.io/apps/reference/configuration/), [ingress HA](https://contributors.home-assistant.io/apps/guides/ingress/), [bibliothèque voice](https://discord.js.org/docs/packages/voice/stable).
-
-La CI teste le moteur, l’interface sur Chromium mobile/ordinateur et les images AMD64/ARM64, sans publier d’image. Les résultats datés et le commit testé sont détaillés dans [VALIDATION.md](VALIDATION.md).
+Références : [options natives HA](https://contributors.home-assistant.io/apps/guides/options/), [schéma HA](https://contributors.home-assistant.io/apps/reference/configuration/), [API des options propres à l’application](https://contributors.home-assistant.io/apps/supervisor-api/apps/).

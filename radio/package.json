@@ -1,6 +1,6 @@
 {
   "name": "haos-discord-radio",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "engines": {
@@ -8,8 +8,7 @@
   },
   "scripts": {
     "start": "node src/index.mjs",
-    "test": "node --test test/*.test.mjs",
-    "test:ui": "playwright test"
+    "test": "node --test test/*.test.mjs"
   },
   "dependencies": {
     "@discordjs/opus": "0.10.0",
@@ -18,8 +17,5 @@
   },
   "overrides": {
     "tar": "7.5.22"
-  },
-  "devDependencies": {
-    "@playwright/test": "1.64.1"
   }
 }

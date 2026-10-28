@@ -7,7 +7,7 @@ import { RadioController } from './controller.mjs';
 
 // play must consume PCM and settle on natural completion or signal abort.
 // It must reject playback/connection failures rather than silently swallowing them.
-export async function runRadio({ config: input, play, signal, controller = new RadioController(), log = () => {}, transcode = createTranscoder, discover = discoverTracks, externalVolume = false }) {
+export async function runRadio({ config: input, play, prepare = async () => {}, signal, controller = new RadioController(), log = () => {}, transcode = createTranscoder, discover = discoverTracks, externalVolume = false }) {
   const config = validateConfig(input);
   const state = new RadioState(config.stateFile, { maxEntries: config.maxStateEntries });
   await state.load();
@@ -32,6 +32,7 @@ export async function runRadio({ config: input, play, signal, controller = new R
       }
       let pipeline;
       let decodeFailure = false;
+      let prepared = false;
       let connectionFailure = false;
       const trackController = new AbortController();
       const abortTrack = () => trackController.abort();
@@ -39,6 +40,10 @@ export async function runRadio({ config: input, play, signal, controller = new R
       if (signal?.aborted) abortTrack();
       controller.currentAbort = abortTrack;
       try {
+        controller.update({ status: 'connecting', track, startedAt: null, error: null });
+        await prepare({ signal: trackController.signal, track });
+        trackController.signal.throwIfAborted();
+        prepared = true;
         controller.update({ status: 'playing', track, startedAt: Date.now(), error: null });
         log('playing', { track });
         pipeline = transcode(track, { signal: trackController.signal, volume: externalVolume ? 1 : (controller.volume ?? config.volume), maxTrackMs: config.maxTrackMs });
@@ -47,7 +52,7 @@ export async function runRadio({ config: input, play, signal, controller = new R
         if (!trackController.signal.aborted) state.succeeded(track);
       } catch (error) {
         if (!trackController.signal.aborted) {
-          if (decodeFailure || !pipeline) { state.failed(track); log('track-error', { track, message: error.message }); }
+          if (decodeFailure || (prepared && !pipeline)) { state.failed(track); log('track-error', { track, message: error.message }); }
           else { connectionFailure = true; log('playback-error', { message: error.message }); }
           controller.update({ status: 'waiting', error: error.message });
         }

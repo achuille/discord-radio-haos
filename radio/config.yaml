@@ -1,8 +1,8 @@
 name: Discord Radio
-version: "0.1.0"
+version: "0.2.0"
 slug: radio
 url: https://github.com/achuille/discord-radio-haos
-description: Radio Discord avec sources audio et interface Home Assistant
+description: Radio Discord pilotée par la configuration native Home Assistant
 stage: experimental
 arch:
   - amd64
@@ -17,25 +17,26 @@ homeassistant_api: false
 docker_api: false
 full_access: false
 apparmor: true
-ingress: true
-ingress_port: 8080
-panel_icon: mdi:radio
-panel_title: Discord Radio
-panel_admin: true
-watchdog: "http://[HOST]:8080/health"
 options:
   discord_token: ""
   guild_id: ""
   voice_channel_id: ""
   auth_mode: selfbot
   volume: 0.6
+  playback_enabled: true
   scan_interval_seconds: 60
+  sync_interval_seconds: 900
   max_track_seconds: 14400
 schema:
-  discord_token: password
+  discord_token: "password(0,8192)"
   auth_mode: "list(selfbot)"
   guild_id: "match(^([0-9]{17,20})?$)"
   voice_channel_id: "match(^([0-9]{17,20})?$)"
+  # No default: omitted means preserve/migrate old sources, explicit [] clears them.
+  sources:
+    - "url?"
   volume: "float(0,1)"
+  playback_enabled: bool
   scan_interval_seconds: "int(10,3600)"
+  sync_interval_seconds: "int(60,86400)"
   max_track_seconds: "int(30,86400)"

@@ -1,0 +1,31 @@
+configuration:
+  discord_token:
+    name: Token Discord
+    description: Secret du compte dédié. Ne le publiez jamais. Le mode selfbot peut entraîner une suspension du compte.
+  auth_mode:
+    name: Mode de connexion
+    description: Seul selfbot est pris en charge ; pas de token de bot officiel.
+  guild_id:
+    name: Identifiant du serveur Discord
+    description: Identifiant numérique, pas le nom du serveur.
+  voice_channel_id:
+    name: Salon vocal de départ
+    description: Identifiant du salon à rejoindre initialement. Les déplacements imposés par le serveur sont suivis sans revenir dans ce salon de création.
+  sources:
+    name: Sources audio publiques
+    description: Jusqu’à 20 URL HTTP(S) de fichiers audio ou dossiers Google Drive publics. Enregistrez puis redémarrez. Liste vide = aucune source ; option absente = conservation/migration des anciennes sources. Activez les options facultatives si ce champ est masqué.
+  volume:
+    name: Volume
+    description: De 0 (muet) à 1. Enregistrez puis redémarrez pour appliquer.
+  playback_enabled:
+    name: Lecture activée
+    description: Désactivez puis redémarrez pour arrêter la lecture et la connexion vocale tout en conservant la synchronisation des sources.
+  scan_interval_seconds:
+    name: Analyse du cache (secondes)
+    description: Fréquence de recherche des pistes locales (10 à 3600 secondes).
+  sync_interval_seconds:
+    name: Synchronisation des sources (secondes)
+    description: Fréquence de vérification des sources publiques (60 à 86400 secondes). Les fichiers directs inchangés sont réutilisés si le serveur prend en charge les requêtes conditionnelles.
+  max_track_seconds:
+    name: Durée maximale par piste (secondes)
+    description: Garde-fou de lecture, entre 30 et 86400 secondes. Les flux infinis ne sont pas pris en charge.

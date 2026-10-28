@@ -1,9 +1,9 @@
 # Discord Radio
 
-Radio Discord avec panneau Home Assistant et cache local pour plusieurs sources audio publiques.
+Radio Discord et cache local, gérés exclusivement dans l’onglet **Configuration** natif Home Assistant : sources audio publiques, volume, lecture et paramètres de démarrage. Aucun panneau web ni commande Discord.
 
-**Expérimental :** installation HAOS et diffusion vocale réelles encore à valider. Lisez les limites du mode selfbot dans le [README du dépôt](../README.md) avant utilisation.
+**Expérimental :** installation HAOS et diffusion réelle encore à valider. Le mode selfbot expose le compte à une suspension ; lire les limites dans le [README du dépôt](../README.md).
 
-[Installation et dépannage](DOCS.md)
+[Installation, migration et dépannage](DOCS.md)
 
-Le token se saisit seulement dans la configuration de l'application HA. Les sources et fichiers audio restent dans `/data`, hors du dépôt.
+Saisir le token seulement dans la configuration HA. Enregistrer puis redémarrer après une modification. Les anciennes sources et le volume sont migrés sans supprimer le cache ; si la migration échoue, l’ancienne configuration reste active.
