@@ -31,7 +31,6 @@ jobs:
           sudo find /etc/apt -maxdepth 2 -type f \
             \( -name '*.list' -o -name '*.sources' \) \
             -exec sed -i -E 's#https?://azure\.archive\.ubuntu\.com/ubuntu#https://archive.ubuntu.com/ubuntu#g' {} +
-          # Also applies to the apt subprocess used by Playwright --with-deps.
           sudo tee /etc/apt/apt.conf.d/99radio-ci-network >/dev/null <<'APT'
           Acquire::http::Timeout "30";
           Acquire::https::Timeout "30";
@@ -43,41 +42,6 @@ jobs:
         run: sudo apt-get update --error-on=any && sudo apt-get install -y --no-install-recommends ffmpeg python3 make g++ pkg-config libopus-dev
       - run: npm ci --no-audit --no-fund
       - run: npm test
-  browser-ui:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    # Match the exact @playwright/test pin: browsers and OS dependencies are preinstalled.
-    container:
-      image: mcr.microsoft.com/playwright:v1.64.1-noble
-      options: --init --shm-size=1g
-    defaults:
-      run:
-        working-directory: radio
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@v6
-        with:
-          node-version: '22'
-          cache: npm
-          cache-dependency-path: radio/package-lock.json
-      # Empty-options UI startup never loads native Discord/audio modules.
-      # Native installation, FFmpeg and DAVE remain covered by unit and image jobs.
-      - name: Install locked UI dependencies without native build scripts
-        run: npm ci --ignore-scripts --no-audit --no-fund
-      - name: Test real unconfigured app and isolated mock-only controls
-        run: npm run test:ui
-      - name: Upload nonconnected UI screenshots and test report
-        if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v5
-        with:
-          name: nonconnected-browser-ui
-          path: |
-            radio/test-results/
-            radio/playwright-report/
-          retention-days: 7
-          if-no-files-found: warn
   image:
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -109,7 +73,7 @@ jobs:
           tags: discord-radio:ci
           build-args: |
             BUILD_ARCH=${{ matrix.ha_arch }}
-            BUILD_VERSION=0.1.0
+            BUILD_VERSION=0.2.0
       - name: Verify native audio dependencies without network or token
         run: |
           docker run --rm --network none --platform '${{ matrix.platform }}' \
@@ -127,16 +91,23 @@ jobs:
             discord-radio:ci
           docker exec "$container" node --input-type=module -e '
             import { setTimeout } from "node:timers/promises";
-            let healthy = false;
-            for (let attempt = 0; attempt < 60; attempt++) {
+            import { readFile } from "node:fs/promises";
+            let ready = false;
+            for (let attempt = 0; attempt < 30; attempt++) {
               try {
-                const response = await fetch("http://127.0.0.1:8080/health", { signal: AbortSignal.timeout(2000) });
-                if (response.status === 200 && (await response.json()).ok === true) { healthy = true; break; }
+                const state = JSON.parse(await readFile("/data/settings.json", "utf8"));
+                if (state.nativeConfiguration === true) { ready = true; break; }
               } catch {}
               await setTimeout(1000);
             }
-            if (!healthy) throw new Error("Actual image did not become healthy");
-            const response = await fetch("http://127.0.0.1:8080/api/status", { signal: AbortSignal.timeout(2000) });
-            if (response.status !== 403) throw new Error("Production ingress guard did not refuse loopback API");
-            console.log("Default image entrypoint healthy; production API guard verified (not a HAOS installation test)");
+            if (!ready) throw new Error("Worker did not initialize private state");
+            await setTimeout(2000);
+            try {
+              await fetch("http://127.0.0.1:8080/health", { signal: AbortSignal.timeout(1000) });
+              throw new Error("Unexpected web listener");
+            } catch (error) { if (error.message === "Unexpected web listener") throw error; }
+            console.log("Native-config worker initialized without a web listener (not a HAOS installation test)");
           '
+          test "$(docker inspect --format '{{.State.Running}}' "$container")" = true
+          docker stop --time 15 "$container" >/dev/null
+          test "$(docker inspect --format '{{.State.ExitCode}}' "$container")" = 0
